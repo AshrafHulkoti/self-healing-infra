@@ -1,0 +1,56 @@
+pipelineJob("Grafana_Alert_Trigger") {
+	description()
+	keepDependencies(false)
+	definition {
+		cpsScm {
+"""node("slave") {
+    def alertName = env.ALERT_NAME_1
+    def alertName2 = env.ALERT_NAME_2
+    def alertName3 = env.ALERT_NAME_3
+    def alertName4 = env.ALERT_NAME_4
+    Date oneHourBack
+    def lastSuccessfulBuildTime
+    if((alertName != null && alertName.contains("5XXInNginxFeed")) || (alertName2 != null && alertName2.contains("5XXInNginxFeed")) || (alertName3 != null && alertName3.contains("5XXInNginxFeed")) || (alertName4 != null && alertName4.contains("5XXInNginxFeed"))) {
+        stage('Get the last build time') {
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(new Date());
+            cal.add(Calendar.HOUR, -1);
+            oneHourBack = cal.getTime();
+            lastSuccessfulBuildTime = Jenkins.instance.getItem('Hackathon_Deploy_Feed').lastSuccessfulBuild.time
+        }  
+        if(oneHourBack<lastSuccessfulBuildTime) {
+            stage('Rollback Feed to Previous Version') {
+                sh "/usr/local/bin/helm upgrade --install --atomic --timeout 240s nginx-feed feed-charts -n hackathon --kubeconfig"
+            }
+        }
+    }
+    if((alertName != null && alertName.contains("LowBurstBalance")) || (alertName2 != null && alertName2.contains("LowBurstBalance")) || (alertName3 != null && alertName3.contains("LowBurstBalance")) || (alertName4 != null && alertName4.contains("LowBurstBalance"))) {
+        stage('Balancing load across db instances in replica') {
+            sh \"\"\"python3 burstbalance_adjust.py \$alertName\"\"\"
+        }  
+    }
+    if((alertName != null && alertName.contains("5xxInConsumer")) || (alertName2 != null && alertName2.contains("5xxInConsumer")) || (alertName3 != null && alertName3.contains("5xxInConsumer")) || (alertName4 != null && alertName4.contains("5xxInConsumer"))) {
+        stage('Revert Code Deploy') {
+            sh "python3 aws_code_deploy_rollback.py"
+            slackSend(color: "good", message: "CodeDeploy Rollback is triggered for hackathon-consumer (<\${env.BUILD_URL}|Open>)\\nCheck Status at AWS CodeDeploy (<https://ap-southeast-1.console.aws.amazon.com/codesuite/codedeploy/applications/hackathon-consumer?region=ap-southeast-1|Open>)", channel: "C0462E2HLR1")
+        }  
+    }
+        
+}"""		}
+	}
+	disabled(false)
+	configure {
+		it / 'properties' / 'jenkins.model.BuildDiscarderProperty' {
+			strategy {
+				'daysToKeep'('-1')
+				'numToKeep'('10')
+				'artifactDaysToKeep'('-1')
+				'artifactNumToKeep'('-1')
+			}
+		}
+		it / 'properties' / 'com.sonyericsson.rebuild.RebuildSettings' {
+			'autoRebuild'('false')
+			'rebuildDisabled'('false')
+		}
+	}
+}

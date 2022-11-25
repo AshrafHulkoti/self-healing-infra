@@ -1,0 +1,24 @@
+- name: my-rule-file
+   groups:
+     - name: Host_Metrics
+       rules:
+         - alert: 5xxResponse
+           expr: round((rate(nginx_ingress_controller_requests{ingress="hackathon-ingress",status=~"5.*",exported_service="feed-service"}[1m])), 1) > 10
+           for: 5m
+           labels:
+             severity: Critical
+             application: backend
+             environment: prod
+           annotations:
+             description: '5xx error in the response'
+             summary: '{{ $labels.instance }} {{ $labels.view }} {{ $labels.Target_Group }} 5xx errors in the response'
+         - alert: HighLatency
+           expr: histogram_quantile(0.90, sum(rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress=~"hackathon-ingress",exported_service="feed-service"}[1m])) by (le)) > 0.5
+           for: 5m
+           labels:
+             severity: Critical
+             application: backend
+             environment: prod
+           annotations:
+             description: 'Latency has increased'
+             summary: '{{ $labels.instance }} {{ $labels.view }} {{ $labels.Target_Group }} 95% quantile latency[3m] is greater than 100s.'
